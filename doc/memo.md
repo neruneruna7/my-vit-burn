@@ -39,6 +39,33 @@ NLP用のトランスフォーマーをそのまま使う．
 ### MLP入力
 10次元出力のMLPを作って，トランスフォーマー最終層のCLSトークン出力をぶち込む．
 
+# テンソルの形状確認
+```
+=== Forward Pass ===
+Input Shape: torch.Size([128, 3, 32, 32])
+After Chunk Shape: [torch.Size([128, 3, 8, 32]), torch.Size([128, 3, 8, 32]), torch.Size([128, 3, 8, 32]), torch.Size([128, 3, 8, 32])]
+After Stack Shape: torch.Size([128, 4, 3, 8, 32])
+After Column Chunk Shape: [torch.Size([128, 4, 3, 8, 8]), torch.Size([128, 4, 3, 8, 8]), torch.Size([128, 4, 3, 8, 8]), torch.Size([128, 4, 3, 8, 8])]
+After Concat Patches Shape: torch.Size([128, 16, 3, 8, 8])
+After Patchify Shape: torch.Size([128, 16, 3, 8, 8])
+After Flatten Shape: torch.Size([128, 16, 192])
+After Patch Embedding Shape: torch.Size([128, 16, 96])
+After Transformer Encoder Shape: torch.Size([128, 17, 96])
+Output Shape: torch.Size([128, 10])
+=====================
+```
+
+最初は4次元
+Rowをチャンク化して5次元に
+それをStackして4次元に
+Colをチャンク化して5次元に
+それをConcatして5次元に
+パッチ処理後は5次元
+それをFlattenして3次元に
+それをパッチ埋め込みして3次元に
+トランスフォーマー通過後は3次元
+MLP通過後は2次元
+
 # BIB
 - https://qiita.com/nknknaoto/items/615e8057db0a45d7b1be
 - 

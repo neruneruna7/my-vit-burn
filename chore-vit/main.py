@@ -42,19 +42,35 @@ class ViT(nn.Module):
         self.mlpHead=nn.Linear(embedVectorLen,10)
 
     def patchify(self,img):
-        horizontal = torch.stack(torch.chunk(img,splitRow,dim=2),dim=1)
-        patches = torch.cat(torch.chunk(horizontal,splitCol,dim=4),dim=1)
+        chunked = torch.chunk(img,splitRow,dim=2)
+        print("After Chunk Shape:", [c.shape for c in chunked])
+        horizontal = torch.stack(chunked,dim=1)
+        print("After Stack Shape:", horizontal.shape)
+
+        col_chunked = torch.chunk(horizontal,splitCol,dim=4)
+        print("After Column Chunk Shape:", [c.shape for c in col_chunked])
+        patches = torch.cat(col_chunked,dim=1)
+        print("After Concat Patches Shape:", patches.shape)
         return patches
 
     def forward(self,x):
+        # それぞれのテンソルの形状を確認する
+        print("=== Forward Pass ===")
+        print("Input Shape:", x.shape)
         x=self.patchify(x)
+        print("After Patchify Shape:", x.shape)
         x=torch.flatten(x,start_dim=2)
+        print("After Flatten Shape:", x.shape)
         x=self.patchEmbedding(x)
+        print("After Patch Embedding Shape:", x.shape)
         clsToken = self.cls.repeat_interleave(x.shape[0],dim=0)
         x=torch.cat((clsToken,x),dim=1)
         x+=self.positionEmbedding
         x=self.transformerEncoder(x)
+        print("After Transformer Encoder Shape:", x.shape)
         x=self.mlpHead(x[:,0,:])
+        print("Output Shape:", x.shape)
+        print("=====================\n")
         return x
 
 def get_device():
@@ -104,7 +120,7 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
     # 4. 学習ループ
-    epochs = 5 # お試しなので少なめに設定
+    epochs = 1 # お試しなので少なめに設定
     print(f"Start Training for {epochs} epochs...")
 
     for epoch in range(epochs):
@@ -133,7 +149,7 @@ def main():
                 running_loss = 0.0
                 correct = 0
                 total = 0
-
+             
         # エポックごとの検証（Validation）
         model.eval()
         test_correct = 0

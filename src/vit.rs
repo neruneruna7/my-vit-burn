@@ -5,9 +5,13 @@ use burn::{
     nn::{
         Linear, LinearConfig,
         conv::Conv2d,
-        transformer::{TransformerEncoder, TransformerEncoderConfig, TransformerEncoderLayer},
+        transformer::{
+            TransformerEncoder, TransformerEncoderConfig, TransformerEncoderInput,
+            TransformerEncoderLayer,
+        },
     },
     prelude::*,
+    tensor::ops::TransactionOps,
 };
 
 // image params
@@ -103,14 +107,34 @@ impl<B: Backend> Vit<B> {
         vertical
     }
 
-    pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
+    pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 2> {
         let x = self.patchfy(input);
         // 次元のインデックスは0スタート．2から4次元までを平坦化
         // 2つ次元が減るので，5から3次元になる
         let x: Tensor<B, 3> = x.flatten(2, 4);
         let x = self.patch_embedding.forward(x);
-        let cls_token = repeat_interleave::<B, 3, 4>(self.cls.clone().t(), x.shape().dims[0], 0);
+        let cls_token = repeat_interleave::<B, 3, 4>(self.cls.clone().val(), x.shape().dims[0], 0);
+        let x = Tensor::cat(vec![cls_token, x], 1);
+        let x = x + self.position_embedding.clone().val();
+        let transformer_encoder_input = TransformerEncoderInput::new(x);
+        let x = self.transformer_encoder.forward(transformer_encoder_input);
 
-        todo!()
+        // 1. サイズを取得
+        let [batch_size, _seq_len, embed_dim] = x.dims();
+
+        // 2. スライス: 0番目のトークン(CLS)だけを切り出す
+        // Python: x[:, 0, :]
+        // Burn: x.slice(...) -> Shapeは [batch, 1, embed] のまま維持される
+        let cls_token = x.slice([0..batch_size, 0..1, 0..embed_dim]);
+
+        // 3. 次元削除: [batch, 1, embed] -> [batch, embed]
+        // 真ん中の「1」になっている次元(dim=1)をつぶす
+        let cls_token: Tensor<B, 2> = cls_token.squeeze();
+
+        // 4. MLP Headに通して分類結果を出す
+        // Output: [batch, 10]
+        let x = self.mlp_head.forward(cls_token);
+
+        x
     }
 }

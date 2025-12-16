@@ -68,6 +68,7 @@ class ViT(nn.Module):
         x+=self.positionEmbedding
         x=self.transformerEncoder(x)
         print("After Transformer Encoder Shape:", x.shape)
+        print("CLS Token Shape:", x[:,0,:].shape)
         x=self.mlpHead(x[:,0,:])
         print("Output Shape:", x.shape)
         print("=====================\n")

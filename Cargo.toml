@@ -1,0 +1,10 @@
+[package]
+name = "my-vit-burn"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+burn = { version = "0.19.1", features = ["wgpu", "metal"] }
+tracing = "0.1.43"
+tracing-subscriber = "0.3.22"

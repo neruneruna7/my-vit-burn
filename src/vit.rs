@@ -11,7 +11,7 @@ use burn::{
         },
     },
     prelude::*,
-    tensor::ops::TransactionOps,
+    tensor::{backend::AutodiffBackend, ops::TransactionOps},
 };
 
 // image params
@@ -138,3 +138,5 @@ impl<B: Backend> Vit<B> {
         x
     }
 }
+
+// impl<B: AutodiffBackend> TrainStep

@@ -1,11 +1,11 @@
 use burn::data::dataset::transform::Mapper; // Mapperトレイト
-use burn::data::dataset::transform::MapperDataset; // 【修正1】パスを変更
+use burn::data::dataset::transform::MapperDataset;
 use burn::data::dataset::{Dataset, HuggingfaceDatasetLoader, SqliteDataset};
-use burn::tensor::backend::Backend; // パスを修正use serde::{Deserialize, Serialize};
+use burn::tensor::backend::Backend;
 use burn::tensor::{Tensor, TensorData};
 use serde::Deserialize;
 use serde::Serialize;
-use std::marker::PhantomData; // 【修正3】のために必要
+use std::marker::PhantomData;
 
 // 生データ（変更なし）
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -16,7 +16,7 @@ pub struct Cifar10ItemRaw {
 
 #[derive(Clone, Debug)]
 pub struct Cifar10Item<B: Backend> {
-    pub image: Tensor<B, 3>, // Tensor<Backend, 3> ではなく Tensor<B, 3>
+    pub image: Tensor<B, 3>,
     pub label: usize,
 }
 

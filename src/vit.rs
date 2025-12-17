@@ -5,9 +5,7 @@ use burn::{
     nn::{
         Linear, LinearConfig,
         loss::CrossEntropyLossConfig,
-        transformer::{
-            TransformerEncoder, TransformerEncoderConfig, TransformerEncoderInput,
-        },
+        transformer::{TransformerEncoder, TransformerEncoderConfig, TransformerEncoderInput},
     },
     prelude::*,
     tensor::backend::AutodiffBackend,
@@ -104,7 +102,6 @@ impl<B: Backend> Vit<B> {
         let rows_patches = tensor.chunk(SPLIT_ROWS, 2);
         let horizontal: Tensor<B, 5> = Tensor::stack(rows_patches, 1);
         let cols_patches = horizontal.chunk(SPLIT_COLS, 4);
-        
 
         Tensor::cat(cols_patches, 1)
     }
@@ -135,7 +132,6 @@ impl<B: Backend> Vit<B> {
 
         // 4. MLP Headに通して分類結果を出す
         // Output: [batch, 10]
-        
 
         self.mlp_head.forward(cls_token)
     }
@@ -164,5 +160,83 @@ impl<B: AutodiffBackend> TrainStep<Cifar10Batch<B>, ClassificationOutput<B>> for
 impl<B: Backend> ValidStep<Cifar10Batch<B>, ClassificationOutput<B>> for Vit<B> {
     fn step(&self, batch: Cifar10Batch<B>) -> ClassificationOutput<B> {
         self.forward_classification(batch.images, batch.targets)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use burn::prelude::*;
+    use burn::tensor::{Tensor, Tolerance};
+
+    // テスト用のバックエンド定義（プロジェクトの設定に合わせて変更してください）
+    // 通常は burn::backend::ndarray::NdArray<f32> などを使います
+    type TestBackend = burn::backend::ndarray::NdArray<f32>;
+
+    #[test]
+    fn test_repeat_interleave_1d() {
+        // ケース1: 1次元テンソル [1, 2] を3回リピート -> [1, 1, 1, 2, 2, 2]
+        let device = Default::default();
+        let tensor = Tensor::<TestBackend, 1>::from_data([1.0, 2.0], &device);
+
+        // D=1 なので D2=2 を指定する必要があります
+        let output = repeat_interleave::<TestBackend, 1, 2>(tensor, 3, 0);
+
+        let expected_data = TensorData::from([1.0, 1.0, 1.0, 2.0, 2.0, 2.0]);
+
+        // 値の検証
+        output
+            .into_data()
+            .assert_approx_eq::<f32>(&expected_data, Tolerance::default());
+    }
+
+    #[test]
+    fn test_repeat_interleave_2d_dim0() {
+        // ケース2: 2次元テンソル (dim=0, 行方向のリピート)
+        // [[1, 2],
+        //  [3, 4]]
+        // ↓ repeats=2, dim=0
+        // [[1, 2], [1, 2],
+        //  [3, 4], [3, 4]]
+
+        let device = Default::default();
+        let data = TensorData::from([[1.0, 2.0], [3.0, 4.0]]);
+        let tensor = Tensor::<TestBackend, 2>::from_data(data, &device);
+
+        // D=2 なので D2=3
+        let output = repeat_interleave::<TestBackend, 2, 3>(tensor, 2, 0);
+
+        let expected_data = TensorData::from([[1.0, 2.0], [1.0, 2.0], [3.0, 4.0], [3.0, 4.0]]);
+
+        // シェイプの検証: [4, 2] になっているはず
+        assert_eq!(output.dims(), [4, 2]);
+        output
+            .into_data()
+            .assert_approx_eq::<f32>(&expected_data, Tolerance::default());
+    }
+
+    #[test]
+    fn test_repeat_interleave_2d_dim1() {
+        // ケース3: 2次元テンソル (dim=1, 列方向のリピート)
+        // [[1, 2],
+        //  [3, 4]]
+        // ↓ repeats=2, dim=1
+        // [[1, 1, 2, 2],
+        //  [3, 3, 4, 4]]
+
+        let device = Default::default();
+        let data = TensorData::from([[1.0, 2.0], [3.0, 4.0]]);
+        let tensor = Tensor::<TestBackend, 2>::from_data(data, &device);
+
+        // D=2 なので D2=3
+        let output = repeat_interleave::<TestBackend, 2, 3>(tensor, 2, 1);
+
+        let expected_data = TensorData::from([[1.0, 1.0, 2.0, 2.0], [3.0, 3.0, 4.0, 4.0]]);
+
+        // シェイプの検証: [2, 4] になっているはず
+        assert_eq!(output.dims(), [2, 4]);
+        output
+            .into_data()
+            .assert_approx_eq::<f32>(&expected_data, Tolerance::default());
     }
 }

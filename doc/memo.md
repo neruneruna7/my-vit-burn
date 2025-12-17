@@ -66,6 +66,14 @@ Colをチャンク化して5次元に
 トランスフォーマー通過後は3次元
 MLP通過後は2次元
 
+## memo
+### Transformer Encoderの設定
+https://deepwiki.com/search/pytorchburn-encoderlayer-trans_792129ee-02d7-458b-9389-9b05fd5e83e5?mode=fast
+batch_firstは指定不要．Burnでは最初からBatch Firstになっている．
+
+GeLU活性化関数の指定は不要．Burnでは最初からGeLUになっている．
+
+
 # BIB
 - https://qiita.com/nknknaoto/items/615e8057db0a45d7b1be
 - 

@@ -3,16 +3,15 @@ use std::collections::HashMap;
 use burn::{
     backend::{
         Autodiff, Wgpu,
-        wgpu::{Metal, WgpuDevice},
+        wgpu::WgpuDevice,
     },
     data::dataset::{
         Dataset as _, HuggingfaceDatasetLoader, SqliteDataset, transform::MapperDataset,
     },
-    optim::{AdamConfig, decay::WeightDecayConfig},
     prelude::Backend,
 };
 use image::{ColorType, save_buffer};
-use my_vit_burn::cifar10_item::{Cifar10Item, Cifar10ItemRaw, Cifar10Mapper, build_dataset};
+use my_vit_burn::cifar10_item::{Cifar10Item, Cifar10ItemRaw, Cifar10Mapper};
 use serde_json::Value;
 
 type MyBackend = Wgpu;

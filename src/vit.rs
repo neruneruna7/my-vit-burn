@@ -4,15 +4,13 @@ use burn::{
     module::Param,
     nn::{
         Linear, LinearConfig,
-        conv::Conv2d,
         loss::CrossEntropyLossConfig,
         transformer::{
             TransformerEncoder, TransformerEncoderConfig, TransformerEncoderInput,
-            TransformerEncoderLayer,
         },
     },
     prelude::*,
-    tensor::{backend::AutodiffBackend, ops::TransactionOps},
+    tensor::backend::AutodiffBackend,
     train::{ClassificationOutput, TrainOutput, TrainStep, ValidStep},
 };
 
@@ -106,9 +104,9 @@ impl<B: Backend> Vit<B> {
         let rows_patches = tensor.chunk(SPLIT_ROWS, 2);
         let horizontal: Tensor<B, 5> = Tensor::stack(rows_patches, 1);
         let cols_patches = horizontal.chunk(SPLIT_COLS, 4);
-        let vertical = Tensor::cat(cols_patches, 1);
+        
 
-        vertical
+        Tensor::cat(cols_patches, 1)
     }
 
     pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 2> {
@@ -137,9 +135,9 @@ impl<B: Backend> Vit<B> {
 
         // 4. MLP Headに通して分類結果を出す
         // Output: [batch, 10]
-        let x = self.mlp_head.forward(cls_token);
+        
 
-        x
+        self.mlp_head.forward(cls_token)
     }
 
     pub fn forward_classification(

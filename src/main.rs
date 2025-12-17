@@ -7,7 +7,10 @@ use burn::{
     optim::{AdamConfig, decay::WeightDecayConfig},
     prelude::Backend,
 };
-use my_vit_burn::cifar10_item::{Cifar10ItemRaw, build_dataset};
+use my_vit_burn::{
+    cifar10_item::{Cifar10ItemRaw, build_dataset},
+    training,
+};
 
 type MyBackend = Wgpu;
 type MyAutodiffBackend = Autodiff<MyBackend>;
@@ -16,5 +19,5 @@ fn main() {
     println!("Hello, world!");
     let device = WgpuDevice::default();
 
-    build_dataset::<MyBackend>();
+    training::run::<MyAutodiffBackend>(device);
 }

@@ -5,6 +5,7 @@ use burn::{
     nn::{
         Linear, LinearConfig,
         conv::Conv2d,
+        loss::CrossEntropyLossConfig,
         transformer::{
             TransformerEncoder, TransformerEncoderConfig, TransformerEncoderInput,
             TransformerEncoderLayer,
@@ -12,7 +13,10 @@ use burn::{
     },
     prelude::*,
     tensor::{backend::AutodiffBackend, ops::TransactionOps},
+    train::{ClassificationOutput, TrainOutput, TrainStep, ValidStep},
 };
+
+use crate::cifar10_batcher::Cifar10Batch;
 
 // image params
 const IMAGE_WH: usize = 32;
@@ -54,11 +58,11 @@ fn repeat_interleave<B: Backend, const D: usize, const D2: usize>(
 
 #[derive(Config, Debug)]
 pub struct VitConfig {
-    pub num_layers: usize,
-    pub num_heads: usize,
-    pub hidden_dim: usize,
-    pub mlp_dim: usize,
-    pub dropout: f64,
+    // pub num_layers: usize,
+    // pub num_heads: usize,
+    // pub hidden_dim: usize,
+    // pub mlp_dim: usize,
+    // pub dropout: f64,
 }
 
 impl VitConfig {
@@ -137,6 +141,30 @@ impl<B: Backend> Vit<B> {
 
         x
     }
+
+    pub fn forward_classification(
+        &self,
+        images: Tensor<B, 4>,
+        targets: Tensor<B, 1, Int>,
+    ) -> ClassificationOutput<B> {
+        let output = self.forward(images);
+        let loss = CrossEntropyLossConfig::new()
+            .init(&output.device())
+            .forward(output.clone(), targets.clone());
+
+        ClassificationOutput::new(loss, output, targets)
+    }
 }
 
-// impl<B: AutodiffBackend> TrainStep
+impl<B: AutodiffBackend> TrainStep<Cifar10Batch<B>, ClassificationOutput<B>> for Vit<B> {
+    fn step(&self, batch: Cifar10Batch<B>) -> TrainOutput<ClassificationOutput<B>> {
+        let item = self.forward_classification(batch.images, batch.targets);
+        TrainOutput::new(self, item.loss.backward(), item)
+    }
+}
+
+impl<B: Backend> ValidStep<Cifar10Batch<B>, ClassificationOutput<B>> for Vit<B> {
+    fn step(&self, batch: Cifar10Batch<B>) -> ClassificationOutput<B> {
+        self.forward_classification(batch.images, batch.targets)
+    }
+}

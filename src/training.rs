@@ -20,7 +20,7 @@ use crate::vit::{Vit, VitConfig}; // あなたのViTモデルをインポート
 pub struct TrainingConfig {
     #[config(default = 10)]
     pub num_epochs: usize,
-    #[config(default = 32)]
+    #[config(default = 16)]
     pub batch_size: usize,
     #[config(default = 4)]
     pub num_workers: usize,
@@ -94,13 +94,13 @@ pub fn run<B: AutodiffBackend>(device: B::Device) {
 
     // --- 学習実行 (Learner) ---
     let learner = LearnerBuilder::new("/tmp/burn-vit-cifar10")
-        .metric_train_numeric(AccuracyMetric::new())
-        .metric_valid_numeric(AccuracyMetric::new())
-        .metric_train_numeric(LossMetric::new())
-        .metric_valid_numeric(LossMetric::new())
+        // .metric_train_numeric(AccuracyMetric::new())
+        // .metric_valid_numeric(AccuracyMetric::new())
+        // .metric_train_numeric(LossMetric::new())
+        // .metric_valid_numeric(LossMetric::new())
         .with_file_checkpointer(CompactRecorder::new())
-        .num_epochs(config.num_epochs)
-        .summary()
+        // .num_epochs(config.num_epochs)
+        // .summary()
         .build(model, optimizer, config.learning_rate);
 
     let model_trained = learner.fit(dataloader_train, dataloader_test);

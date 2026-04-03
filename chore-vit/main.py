@@ -30,6 +30,7 @@ class ViT(nn.Module):
         self.patchEmbedding = nn.Linear(patchVectorLen,embedVectorLen)
         self.cls = nn.Parameter(torch.zeros(1, 1, embedVectorLen))
         self.positionEmbedding = nn.Parameter(torch.zeros(1, patchTotal + 1, embedVectorLen))
+        self.dropout = nn.Dropout(0.1)
         encoderLayer = TransformerEncoderLayer(
             d_model=embedVectorLen,
             nhead=head,
@@ -39,35 +40,51 @@ class ViT(nn.Module):
             norm_first=True
         )
         self.transformerEncoder = TransformerEncoder(encoderLayer,layers)
+        self.layerNorm = nn.LayerNorm(embedVectorLen)
         self.mlpHead=nn.Linear(embedVectorLen,10)
 
     def patchify(self,img):
-        chunked = torch.chunk(img,splitRow,dim=2)
-        print("After Chunk Shape:", [c.shape for c in chunked])
-        horizontal = torch.stack(chunked,dim=1)
+        row_chunked = torch.chunk(img,splitRow,dim=2)
+        print("After Chunk Shape:", [c.shape for c in row_chunked])
+        horizontal = torch.stack(row_chunked,dim=1)
         print("After Stack Shape:", horizontal.shape)
 
         col_chunked = torch.chunk(horizontal,splitCol,dim=4)
-        print("After Column Chunk Shape:", [c.shape for c in col_chunked])
-        patches = torch.cat(col_chunked,dim=1)
+        grid = torch.stack(col_chunked,dim=2)
+        print("After 2nd Stack Shape:", grid.shape)
+        patches = grid.flatten(1,2)
         print("After Concat Patches Shape:", patches.shape)
+        patches = patches.flatten(2)
+        print("After Flatten Patches Shape:", patches.shape)
         return patches
 
     def forward(self,x):
         # それぞれのテンソルの形状を確認する
         print("=== Forward Pass ===")
         print("Input Shape:", x.shape)
+        # 画像をパッチ化して平坦にする
         x=self.patchify(x)
         print("After Patchify Shape:", x.shape)
         x=torch.flatten(x,start_dim=2)
         print("After Flatten Shape:", x.shape)
+        # 数式で言うと，パッチにEを掛ける部分
         x=self.patchEmbedding(x)
         print("After Patch Embedding Shape:", x.shape)
-        clsToken = self.cls.repeat_interleave(x.shape[0],dim=0)
+
+        # クラストークンの結合
+        # clsToken = self.cls.repeat_interleave(x.shape[0],dim=0)
+        clsToken = self.cls.expand(x.shape[0], -1, -1)
         x=torch.cat((clsToken,x),dim=1)
+
+        # 位置埋め込みの加算
         x+=self.positionEmbedding
+        x = self.dropout(x)
+        print("After Adding CLS and Position Embedding Shape:", x.shape)
         x=self.transformerEncoder(x)
         print("After Transformer Encoder Shape:", x.shape)
+        x = self.layerNorm(x)
+        print("After LayerNorm Shape:", x.shape)
+
         print("CLS Token Shape:", x[:,0,:].shape)
         x=self.mlpHead(x[:,0,:])
         print("Output Shape:", x.shape)

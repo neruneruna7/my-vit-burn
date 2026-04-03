@@ -3,7 +3,7 @@
 use burn::{
     module::Param,
     nn::{
-        Linear, LinearConfig,
+        LayerNorm, LayerNormConfig, Linear, LinearConfig,
         loss::CrossEntropyLossConfig,
         transformer::{TransformerEncoder, TransformerEncoderConfig, TransformerEncoderInput},
     },
@@ -76,6 +76,7 @@ impl VitConfig {
         let transformer_encoder =
             TransformerEncoderConfig::new(EMBED_VECTOR_LEN, DIM_FEEDFORWARD, HEAD, LAYERS)
                 .with_norm_first(true);
+        let layer_norm = LayerNormConfig::new(EMBED_VECTOR_LEN);
         let mlp_head = LinearConfig::new(EMBED_VECTOR_LEN, 10);
 
         Vit {
@@ -83,6 +84,7 @@ impl VitConfig {
             cls,
             position_embedding,
             transformer_encoder: transformer_encoder.init(device),
+            layer_norm: layer_norm.init(device),
             mlp_head: mlp_head.init(device),
         }
     }
@@ -94,29 +96,41 @@ pub struct Vit<B: Backend> {
     cls: Param<Tensor<B, 3>>,
     position_embedding: Param<Tensor<B, 3>>,
     transformer_encoder: TransformerEncoder<B>,
+    layer_norm: LayerNorm<B>,
     mlp_head: Linear<B>,
 }
 
 impl<B: Backend> Vit<B> {
-    fn patchfy(&self, tensor: Tensor<B, 4>) -> Tensor<B, 5> {
-        let rows_patches = tensor.chunk(SPLIT_ROWS, 2);
-        let horizontal: Tensor<B, 5> = Tensor::stack(rows_patches, 1);
-        let cols_patches = horizontal.chunk(SPLIT_COLS, 4);
+    /// 画像をパッチ化する
+    /// パッチサイズは8x8で、32x32の画像からは16個のパッチができる
+    /// 入力: [Batch, Channel, Height, Width] = [B, 3, 32, 32]
+    /// 分割されて，[Batch, Num_Patches, Channels, Patch_H, Patch_W] = [B, 16, 3, 8, 8]
+    /// 出力: [Batch, Num_Patches, Patch_Vector_Len] = [B, 16, 3*8*8=192]
+    fn patchfy(&self, tensor: Tensor<B, 4>, split_rows: usize, split_cols: usize) -> Tensor<B, 3> {
+        let rows_chunked = tensor.chunk(split_rows, 2);
+        let rows: Tensor<B, 5> = Tensor::stack(rows_chunked, 1);
+        let cols_chunked = rows.chunk(split_cols, 4);
+        let grid: Tensor<B, 6> = Tensor::stack(cols_chunked, 2);
+        let patches: Tensor<B, 5> = grid.flatten(1, 2);
 
-        Tensor::cat(cols_patches, 1)
+        // pytorchでは，patches = patches.flatten(2) をしたい
+        // shape [Batch, Num_Patches, Channels, Patch_H, Patch_W]
+        // -> [Batch, Num_Patches, Channels * Patch_H * Patch_W]
+        let patches: Tensor<B, 3> = patches.flatten(2, 4);
+        patches
     }
 
     pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 2> {
-        let x = self.patchfy(input);
+        let x = self.patchfy(input, SPLIT_ROWS, SPLIT_COLS);
         // 次元のインデックスは0スタート．2から4次元までを平坦化
         // 2つ次元が減るので，5から3次元になる
-        let x: Tensor<B, 3> = x.flatten(2, 4);
         let x = self.patch_embedding.forward(x);
         let cls_token = repeat_interleave::<B, 3, 4>(self.cls.clone().val(), x.shape().dims[0], 0);
         let x = Tensor::cat(vec![cls_token, x], 1);
         let x = x + self.position_embedding.clone().val();
         let transformer_encoder_input = TransformerEncoderInput::new(x);
         let x = self.transformer_encoder.forward(transformer_encoder_input);
+        let x = self.layer_norm.forward(x);
 
         // 1. サイズを取得
         let [batch_size, _seq_len, embed_dim] = x.dims();
@@ -124,15 +138,14 @@ impl<B: Backend> Vit<B> {
         // 2. スライス: 0番目のトークン(CLS)だけを切り出す
         // Python: x[:, 0, :]
         // Burn: x.slice(...) -> Shapeは [batch, 1, embed] のまま維持される
+        // バッチのデータすべて，0番目のトークン，すべての埋め込み次元を取得
         let cls_token = x.slice([0..batch_size, 0..1, 0..embed_dim]);
 
         // 3. 次元削除: [batch, 1, embed] -> [batch, embed]
         // 真ん中の「1」になっている次元(dim=1)をつぶす
         let cls_token: Tensor<B, 2> = cls_token.squeeze();
-
         // 4. MLP Headに通して分類結果を出す
         // Output: [batch, 10]
-
         self.mlp_head.forward(cls_token)
     }
 

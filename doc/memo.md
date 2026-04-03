@@ -73,6 +73,15 @@ batch_firstは指定不要．Burnでは最初からBatch Firstになっている
 
 GeLU活性化関数の指定は不要．Burnでは最初からGeLUになっている．
 
+ViTはLayerNormを...
+
+### パッチ分割と線形射影
+自己注意機構の計算量を抑えるため？
+
+畳み込みを応用することができる？
+画像をforで切り出し，平坦化し，Linearに通すというのがナイーブな実装に見える．
+
+
 
 # BIB
 - https://qiita.com/nknknaoto/items/615e8057db0a45d7b1be

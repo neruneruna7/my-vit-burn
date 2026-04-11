@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 
 use burn::{
-    backend::{
-        Autodiff, Wgpu,
-        wgpu::WgpuDevice,
-    },
+    backend::{Autodiff, Wgpu, wgpu::WgpuDevice},
     data::dataset::{
         Dataset as _, HuggingfaceDatasetLoader, SqliteDataset, transform::MapperDataset,
     },

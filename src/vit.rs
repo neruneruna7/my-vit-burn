@@ -11,6 +11,7 @@ use burn::{
     tensor::backend::AutodiffBackend,
     train::{ClassificationOutput, TrainOutput, TrainStep, ValidStep},
 };
+use tracing::{debug, info};
 
 use crate::cifar10_batcher::Cifar10Batch;
 
@@ -32,26 +33,6 @@ const DIM_FEEDFORWARD: usize = EMBED_VECTOR_LEN;
 const ACTIVATION: &str = "gelu";
 const LAYERS: usize = 12;
 
-fn repeat_interleave<B: Backend, const D: usize, const D2: usize>(
-    tensor: Tensor<B, D>,
-    repeats: usize,
-    dim: usize,
-) -> Tensor<B, D> {
-    // 1. 指定した次元の直後に新しい次元を追加 (Unsqueeze)
-    // 例: shape [3, 5], dim=0 -> [3, 1, 5]
-    let x: Tensor<B, D2> = tensor.unsqueeze_dim(dim + 1);
-
-    // 2. repeat用のシェイプを作成
-    // 元の次元数(D) + 追加した1次元 = D + 1
-    // 基本はすべて1倍で、追加した次元だけ repeats倍にする
-    let mut repeat_shape = vec![1; D + 1];
-    repeat_shape[dim + 1] = repeats;
-
-    // 3. 追加した次元方向にリピートし、その後元の次元とマージ (Flatten)
-    // [3, 1, 5] -> repeat -> [3, 2, 5] -> flatten(0, 1) -> [6, 5]
-    x.repeat(&repeat_shape).flatten(dim, dim + 1)
-}
-
 #[derive(Config, Debug)]
 pub struct VitConfig {
     // pub num_layers: usize,
@@ -63,6 +44,7 @@ pub struct VitConfig {
 
 impl VitConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> Vit<B> {
+        // パッチをトークン（固定長のベクトルに変換）するための線形層
         let patch_embedding = LinearConfig::new(PATCH_VECTOR_LEN, EMBED_VECTOR_LEN);
         // Pram from_tensor ではなく， uninitializedを使えとの警告あり
         // paramIdがなにかわかってないので，ひとまずはこれで
@@ -121,16 +103,31 @@ impl<B: Backend> Vit<B> {
     }
 
     pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 2> {
+        debug!("Input shape: {:?}", input.dims());
         let x = self.patchfy(input, SPLIT_ROWS, SPLIT_COLS);
+        debug!("After patchfy shape: {:?}", x.dims());
         // 次元のインデックスは0スタート．2から4次元までを平坦化
         // 2つ次元が減るので，5から3次元になる
         let x = self.patch_embedding.forward(x);
-        let cls_token = repeat_interleave::<B, 3, 4>(self.cls.clone().val(), x.shape().dims[0], 0);
+        debug!("After patch embedding shape: {:?}", x.dims());
+        let batch_size = x.dims()[0];
+        let cls_token = self
+            .cls
+            .clone()
+            .val()
+            .expand([batch_size, 1, EMBED_VECTOR_LEN]);
+
+        debug!("cls token shape: {:?}", cls_token.dims());
+
         let x = Tensor::cat(vec![cls_token, x], 1);
+        debug!("After concatenating CLS token shape: {:?}", x.dims());
         let x = x + self.position_embedding.clone().val();
+        debug!("After adding position embedding shape: {:?}", x.dims());
         let transformer_encoder_input = TransformerEncoderInput::new(x);
         let x = self.transformer_encoder.forward(transformer_encoder_input);
+        debug!("After transformer encoder shape: {:?}", x.dims());
         let x = self.layer_norm.forward(x);
+        debug!("After layer norm shape: {:?}", x.dims());
 
         // 1. サイズを取得
         let [batch_size, _seq_len, embed_dim] = x.dims();
@@ -144,6 +141,7 @@ impl<B: Backend> Vit<B> {
         // 3. 次元削除: [batch, 1, embed] -> [batch, embed]
         // 真ん中の「1」になっている次元(dim=1)をつぶす
         let cls_token: Tensor<B, 2> = cls_token.squeeze();
+        debug!("After squeezing CLS token shape: {:?}", cls_token.dims());
         // 4. MLP Headに通して分類結果を出す
         // Output: [batch, 10]
         self.mlp_head.forward(cls_token)
@@ -185,6 +183,33 @@ mod tests {
     // テスト用のバックエンド定義（プロジェクトの設定に合わせて変更してください）
     // 通常は burn::backend::ndarray::NdArray<f32> などを使います
     type TestBackend = burn::backend::ndarray::NdArray<f32>;
+
+    fn repeat_interleave<B: Backend, const D: usize, const D2: usize>(
+        tensor: Tensor<B, D>,
+        repeats: usize,
+        dim: usize,
+    ) -> Tensor<B, D> {
+        assert!(dim < D, "dim must be less than the tensor rank");
+        assert_eq!(D2, D + 1, "D2 must be D + 1");
+
+        let dims = tensor.dims();
+        let mut expanded_dims = [0; D2];
+        let mut source_index = 0;
+
+        for expanded_index in 0..D2 {
+            if expanded_index == dim + 1 {
+                expanded_dims[expanded_index] = repeats;
+            } else {
+                expanded_dims[expanded_index] = dims[source_index];
+                source_index += 1;
+            }
+        }
+
+        tensor
+            .unsqueeze_dim::<D2>(dim + 1)
+            .expand(expanded_dims)
+            .flatten(dim, dim + 1)
+    }
 
     #[test]
     fn test_repeat_interleave_1d() {

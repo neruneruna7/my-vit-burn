@@ -5,10 +5,8 @@ use burn::optim::AdamWConfig;
 use burn::prelude::*;
 use burn::record::CompactRecorder;
 use burn::tensor::backend::AutodiffBackend;
-use burn::train::{
-    LearnerBuilder,
-    metric::{AccuracyMetric, LossMetric},
-};
+use burn::train::metric::{AccuracyMetric, LossMetric};
+use burn::train::{Learner, SupervisedTraining};
 use std::marker::PhantomData;
 
 use crate::cifar10_batcher::Cifar10Batcher;
@@ -93,17 +91,19 @@ pub fn run<B: AutodiffBackend>(device: B::Device) {
         .init();
 
     // --- 学習実行 (Learner) ---
-    let learner = LearnerBuilder::new("/tmp/burn-vit-cifar10")
-        // .metric_train_numeric(AccuracyMetric::new())
-        // .metric_valid_numeric(AccuracyMetric::new())
-        // .metric_train_numeric(LossMetric::new())
-        // .metric_valid_numeric(LossMetric::new())
-        .with_file_checkpointer(CompactRecorder::new())
-        // .num_epochs(config.num_epochs)
-        // .summary()
-        .build(model, optimizer, config.learning_rate);
+    let learner = Learner::new(model, optimizer, config.learning_rate);
+    let result =
+        SupervisedTraining::new("/tmp/burn-vit-cifar10", dataloader_train, dataloader_test)
+            .metric_train_numeric(AccuracyMetric::new())
+            .metric_valid_numeric(AccuracyMetric::new())
+            .metric_train_numeric(LossMetric::new())
+            .metric_valid_numeric(LossMetric::new())
+            .with_file_checkpointer(CompactRecorder::new())
+            .num_epochs(config.num_epochs)
+            .summary()
+            .launch(learner);
 
-    let model_trained = learner.fit(dataloader_train, dataloader_test);
+    let _model_trained = result.model;
 
     println!("Training completed!");
 }

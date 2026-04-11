@@ -9,9 +9,9 @@ use burn::{
     },
     prelude::*,
     tensor::backend::AutodiffBackend,
-    train::{ClassificationOutput, TrainOutput, TrainStep, ValidStep},
+    train::{ClassificationOutput, InferenceStep, TrainOutput, TrainStep},
 };
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::cifar10_batcher::Cifar10Batch;
 
@@ -161,15 +161,26 @@ impl<B: Backend> Vit<B> {
     }
 }
 
-impl<B: AutodiffBackend> TrainStep<Cifar10Batch<B>, ClassificationOutput<B>> for Vit<B> {
-    fn step(&self, batch: Cifar10Batch<B>) -> TrainOutput<ClassificationOutput<B>> {
+// お，v20から関連型を使うようになったんだ
+// いいね，扱いやすくなった．
+// 型を2回書かなくてよくなった
+impl<B: AutodiffBackend> TrainStep for Vit<B> {
+    type Input = Cifar10Batch<B>;
+    type Output = ClassificationOutput<B>;
+
+    fn step(&self, batch: Self::Input) -> TrainOutput<Self::Output> {
         let item = self.forward_classification(batch.images, batch.targets);
         TrainOutput::new(self, item.loss.backward(), item)
     }
 }
 
-impl<B: Backend> ValidStep<Cifar10Batch<B>, ClassificationOutput<B>> for Vit<B> {
-    fn step(&self, batch: Cifar10Batch<B>) -> ClassificationOutput<B> {
+// おそらく，v20からValidStepだったものがInferenceStepに命名変更された
+//
+impl<B: Backend> InferenceStep for Vit<B> {
+    type Input = Cifar10Batch<B>;
+    type Output = ClassificationOutput<B>;
+
+    fn step(&self, batch: Self::Input) -> Self::Output {
         self.forward_classification(batch.images, batch.targets)
     }
 }
@@ -177,7 +188,6 @@ impl<B: Backend> ValidStep<Cifar10Batch<B>, ClassificationOutput<B>> for Vit<B> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::prelude::*;
     use burn::tensor::{Tensor, Tolerance};
 
     // テスト用のバックエンド定義（プロジェクトの設定に合わせて変更してください）

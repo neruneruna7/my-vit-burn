@@ -11,6 +11,7 @@ use std::marker::PhantomData;
 
 use crate::cifar10_batcher::Cifar10Batcher;
 use crate::cifar10_item::{Cifar10ItemRaw, Cifar10Mapper};
+use crate::config::WEIGHT_DECAY;
 use crate::vit::{Vit, VitConfig}; // あなたのViTモデルをインポート
 
 // ハイパーパラメータ設定
@@ -87,7 +88,7 @@ pub fn run<B: AutodiffBackend>(device: B::Device) {
     let model: Vit<B> = VitConfig {}.init(&device);
 
     let optimizer = AdamWConfig::new()
-        .with_weight_decay(0.01) // ViTにはWeight Decayが重要
+        .with_weight_decay(WEIGHT_DECAY) // ViTにはWeight Decayが重要
         .init();
 
     // --- 学習実行 (Learner) ---

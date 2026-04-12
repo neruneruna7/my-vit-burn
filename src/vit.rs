@@ -14,24 +14,7 @@ use burn::{
 use tracing::debug;
 
 use crate::cifar10_batcher::Cifar10Batch;
-
-// image params
-const IMAGE_WH: usize = 32;
-const CHANNEL: usize = 3;
-
-// vit hyper prams
-const PATCH_WH: usize = 8;
-const SPLIT_ROWS: usize = IMAGE_WH / PATCH_WH;
-const SPLIT_COLS: usize = IMAGE_WH / PATCH_WH;
-const PATCH_TOTAL: usize = (IMAGE_WH / PATCH_WH).pow(2);
-const PATCH_VECTOR_LEN: usize = CHANNEL * PATCH_WH.pow(2);
-const EMBED_VECTOR_LEN: usize = PATCH_VECTOR_LEN / 2;
-
-// transformer params
-const HEAD: usize = 12;
-const DIM_FEEDFORWARD: usize = EMBED_VECTOR_LEN;
-const ACTIVATION: &str = "gelu";
-const LAYERS: usize = 12;
+use crate::config::*;
 
 #[derive(Config, Debug)]
 pub struct VitConfig {

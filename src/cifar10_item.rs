@@ -37,11 +37,11 @@ impl<B: Backend> Mapper<Cifar10ItemRaw, Cifar10Item<B>> for Cifar10Mapper<B> {
         let width = img.width() as usize;
         let height = img.height() as usize;
 
-        // ピクセルデータを正規化 (0-255 -> 0.0-1.0)
+        // torchvision.transforms.Normalize((0.5,), (0.5,)) と同じく [-1.0, 1.0] に正規化する。
         let raw_pixels: Vec<f32> = img
             .into_raw()
             .into_iter()
-            .map(|x| (x as f32) / 255.0)
+            .map(|x| (x as f32) / 255.0 * 2.0 - 1.0)
             .collect();
 
         // Tensor作成

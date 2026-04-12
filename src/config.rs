@@ -15,7 +15,11 @@ pub const HEAD: usize = 12;
 pub const DIM_FEEDFORWARD: usize = EMBED_VECTOR_LEN;
 pub const ACTIVATION: &str = "gelu";
 pub const LAYERS: usize = 12;
+pub const DROPOUT: f64 = 0.0;
+pub const LAYER_NORM_EPSILON: f64 = 1e-6;
+pub const POSITION_EMBEDDING_STD: f64 = 0.02;
 
 // training params
-pub const LEANING_RATE: f64 = 1e-4;
-pub const WEIGHT_DECAY: f32 = 0.1;
+pub const LEARNING_RATE: f64 = 1e-4;
+pub const WEIGHT_DECAY: f32 = 1e-2;
+pub const ADAM_EPSILON: f32 = 1e-8;

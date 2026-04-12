@@ -11,7 +11,7 @@ use std::marker::PhantomData;
 
 use crate::cifar10_batcher::Cifar10Batcher;
 use crate::cifar10_item::{Cifar10ItemRaw, Cifar10Mapper};
-use crate::config::WEIGHT_DECAY;
+use crate::config::{ADAM_EPSILON, LEARNING_RATE, WEIGHT_DECAY};
 use crate::vit::{Vit, VitConfig}; // あなたのViTモデルをインポート
 
 // ハイパーパラメータ設定
@@ -19,11 +19,11 @@ use crate::vit::{Vit, VitConfig}; // あなたのViTモデルをインポート
 pub struct TrainingConfig {
     #[config(default = 10)]
     pub num_epochs: usize,
-    #[config(default = 16)]
+    #[config(default = 64)]
     pub batch_size: usize,
     #[config(default = 4)]
     pub num_workers: usize,
-    #[config(default = 1e-4)]
+    #[config(default = "LEARNING_RATE")]
     pub learning_rate: f64,
     #[config(default = 42)]
     pub seed: u64,
@@ -78,7 +78,6 @@ pub fn run<B: AutodiffBackend>(device: B::Device) {
 
     let dataloader_test = DataLoaderBuilder::new(batcher_valid)
         .batch_size(config.batch_size)
-        .shuffle(config.seed)
         .num_workers(config.num_workers)
         .build(dataset_test);
 
@@ -89,6 +88,7 @@ pub fn run<B: AutodiffBackend>(device: B::Device) {
 
     let optimizer = AdamWConfig::new()
         .with_weight_decay(WEIGHT_DECAY) // ViTにはWeight Decayが重要
+        .with_epsilon(ADAM_EPSILON)
         .init();
 
     // --- 学習実行 (Learner) ---

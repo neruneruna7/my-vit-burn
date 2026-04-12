@@ -1,14 +1,14 @@
 // CIFAR-10 images are 32x32 pixels
 
 use burn::{
-    module::Param,
+    module::{Initializer, Param},
     nn::{
         LayerNorm, LayerNormConfig, Linear, LinearConfig,
         loss::CrossEntropyLossConfig,
         transformer::{TransformerEncoder, TransformerEncoderConfig, TransformerEncoderInput},
     },
     prelude::*,
-    tensor::backend::AutodiffBackend,
+    tensor::{Distribution, backend::AutodiffBackend},
     train::{ClassificationOutput, InferenceStep, TrainOutput, TrainStep},
 };
 use tracing::debug;
@@ -27,25 +27,39 @@ pub struct VitConfig {
 
 impl VitConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> Vit<B> {
-        // パッチをトークン（固定長のベクトルに変換）するための線形層
-        let patch_embedding = LinearConfig::new(PATCH_VECTOR_LEN, EMBED_VECTOR_LEN);
+        let patch_embedding = Linear {
+            weight: Initializer::Normal {
+                mean: 0.0,
+                std: (1.0 / PATCH_VECTOR_LEN as f64).sqrt(),
+            }
+            .init_with(
+                [PATCH_VECTOR_LEN, EMBED_VECTOR_LEN],
+                Some(PATCH_VECTOR_LEN),
+                Some(EMBED_VECTOR_LEN),
+                device,
+            ),
+            bias: Some(Initializer::Zeros.init([EMBED_VECTOR_LEN], device)),
+        };
+
         // Pram from_tensor ではなく， uninitializedを使えとの警告あり
         // paramIdがなにかわかってないので，ひとまずはこれで
         let cls: Param<Tensor<B, 3>> =
             Param::from_tensor(Tensor::zeros(Shape::new([1, 1, EMBED_VECTOR_LEN]), device));
-        let position_embedding: Param<Tensor<B, 3>> = Param::from_tensor(Tensor::zeros(
+        let position_embedding: Param<Tensor<B, 3>> = Param::from_tensor(Tensor::random(
             Shape::new([1, PATCH_TOTAL + 1, EMBED_VECTOR_LEN]),
+            Distribution::Normal(0.0, POSITION_EMBEDDING_STD),
             device,
         ));
         // let encoder_layer = TransformerEncoderLayer
         let transformer_encoder =
             TransformerEncoderConfig::new(EMBED_VECTOR_LEN, DIM_FEEDFORWARD, HEAD, LAYERS)
+                .with_dropout(DROPOUT)
                 .with_norm_first(true);
-        let layer_norm = LayerNormConfig::new(EMBED_VECTOR_LEN);
-        let mlp_head = LinearConfig::new(EMBED_VECTOR_LEN, 10);
+        let layer_norm = LayerNormConfig::new(EMBED_VECTOR_LEN).with_epsilon(LAYER_NORM_EPSILON);
+        let mlp_head = LinearConfig::new(EMBED_VECTOR_LEN, 10).with_initializer(Initializer::Zeros);
 
         Vit {
-            patch_embedding: patch_embedding.init(device),
+            patch_embedding,
             cls,
             position_embedding,
             transformer_encoder: transformer_encoder.init(device),
@@ -189,11 +203,11 @@ mod tests {
         let mut expanded_dims = [0; D2];
         let mut source_index = 0;
 
-        for expanded_index in 0..D2 {
+        for (expanded_index, expanded_dim) in expanded_dims.iter_mut().enumerate() {
             if expanded_index == dim + 1 {
-                expanded_dims[expanded_index] = repeats;
+                *expanded_dim = repeats;
             } else {
-                expanded_dims[expanded_index] = dims[source_index];
+                *expanded_dim = dims[source_index];
                 source_index += 1;
             }
         }

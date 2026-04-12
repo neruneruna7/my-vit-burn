@@ -24,7 +24,7 @@ impl<B: Backend> Batcher<B, Cifar10Item<B>, Cifar10Batch<B>> for Cifar10Batcher<
     fn batch(
         &self,
         items: Vec<Cifar10Item<B>>,
-        device: &<B as Backend>::Device,
+        _device: &<B as Backend>::Device,
     ) -> Cifar10Batch<B> {
         // 画像をスタック: [C, H, W] -> [B, C, H, W]
         let images = items

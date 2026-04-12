@@ -1,3 +1,5 @@
+import random
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -7,6 +9,27 @@ from torchvision.models import vit_b_16, ViT_B_16_Weights
 from tqdm import tqdm
 
 from torchvision.models.vision_transformer import VisionTransformer
+
+SEED = 42
+BATCH_SIZE = 64
+EPOCHS = 10
+LEARNING_RATE = 1e-4
+WEIGHT_DECAY = 1e-2
+NUM_WORKERS = 2
+
+
+def seed_everything(seed):
+    random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def seed_worker(worker_id):
+    worker_seed = SEED + worker_id
+    random.seed(worker_seed)
+    torch.manual_seed(worker_seed)
+
 
 def create_custom_vit():
     # 1. パラメータ定義 (Rustの定数をPythonに移植)
@@ -76,19 +99,22 @@ def main():
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
     ])
 
-    # 3. データセットの読み込み
-    batch_size = 64 # GPUメモリに応じて調整が必要
-    
+    seed_everything(SEED)
+    generator = torch.Generator()
+    generator.manual_seed(SEED)
 
+    # 3. データセットの読み込み
     trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
                                             download=True, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                              shuffle=True, num_workers=2)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=BATCH_SIZE,
+                                              shuffle=True, num_workers=NUM_WORKERS,
+                                              worker_init_fn=seed_worker, generator=generator)
 
     testset = torchvision.datasets.CIFAR10(root='./data', train=False,
                                            download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                             shuffle=False, num_workers=2)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=BATCH_SIZE,
+                                             shuffle=False, num_workers=NUM_WORKERS,
+                                             worker_init_fn=seed_worker, generator=generator)
 
     # 4. モデルの定義 (Vision Transformer)
     # weights=Noneを指定してスクラッチから学習する
@@ -104,23 +130,20 @@ def main():
     # 5. 損失関数とオプティマイザの設定
     criterion = nn.CrossEntropyLoss()
     # ViTの学習にはAdamWが推奨される
-    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
-    
-    # 学習スケジューラ (Cosine Annealing)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
+    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 
     # 6. 学習ループ
-    epochs = 10
-    print(f"Start training for {epochs} epochs...")
+    print(f"Start training for {EPOCHS} epochs...")
+    history = []
     
-    for epoch in range(epochs):
+    for epoch in range(EPOCHS):
         model.train()
         running_loss = 0.0
         correct = 0
         total = 0
         
         with tqdm(trainloader, unit="batch") as tepoch:
-            tepoch.set_description(f"Epoch {epoch + 1}/{epochs}")
+            tepoch.set_description(f"Epoch {epoch + 1}/{EPOCHS}")
             
             for inputs, labels in tepoch:
                 inputs, labels = inputs.to(device), labels.to(device)
@@ -133,25 +156,34 @@ def main():
                 optimizer.step()
 
                 # 統計情報の更新
-                running_loss += loss.item()
+                running_loss += loss.item() * labels.size(0)
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
                 
-                # プログレスバーの末尾に現在のLossとAccを表示
-                # リアルタイムで値が更新されていきます
-                current_loss = running_loss / (total / inputs.size(0)) # 平均Lossの概算
+                current_loss = running_loss / total
                 current_acc = 100 * correct / total
-                tepoch.set_postfix(loss=current_loss, acc=f"{current_acc:.2f}%")
-        scheduler.step()
+                tepoch.set_postfix(loss=f"{current_loss:.3f}", acc=f"{current_acc:.2f}%")
         
         # エポックごとの検証
-        validate(model, testloader, device)
+        train_loss = running_loss / total
+        train_acc = 100 * correct / total
+        valid_loss, valid_acc = validate(model, testloader, criterion, device)
+        history.append({
+            "epoch": epoch + 1,
+            "train_loss": train_loss,
+            "train_acc": train_acc,
+            "valid_loss": valid_loss,
+            "valid_acc": valid_acc,
+        })
 
+    print_summary(history)
     print('Finished Training')
 
-def validate(model, testloader, device):
+
+def validate(model, testloader, criterion, device):
     model.eval()
+    running_loss = 0.0
     correct = 0
     total = 0
     with torch.no_grad():
@@ -159,11 +191,36 @@ def validate(model, testloader, device):
             images, labels = data
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
+            loss = criterion(outputs, labels)
+            running_loss += loss.item() * labels.size(0)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
-    print(f'Accuracy of the network on the 10000 test images: {100 * correct / total:.2f} %')
+    valid_loss = running_loss / total
+    valid_acc = 100 * correct / total
+    print(f'Accuracy of the network on the 10000 test images: {valid_acc:.2f} %')
+    return valid_loss, valid_acc
+
+
+def print_summary(history):
+    rows = [
+        ("Train", "Accuracy", "train_acc"),
+        ("Train", "Loss", "train_loss"),
+        ("Valid", "Accuracy", "valid_acc"),
+        ("Valid", "Loss", "valid_loss"),
+    ]
+
+    print()
+    print("| Split | Metric   | Min.     | Epoch    | Max.     | Epoch    |")
+    print("|-------|----------|----------|----------|----------|----------|")
+    for split, metric, key in rows:
+        minimum = min(history, key=lambda item: item[key])
+        maximum = max(history, key=lambda item: item[key])
+        print(
+            f"| {split:<5} | {metric:<8} | {minimum[key]:<8.3f} | "
+            f"{minimum['epoch']:<8} | {maximum[key]:<8.3f} | {maximum['epoch']:<8} |"
+        )
 
 if __name__ == '__main__':
     main()

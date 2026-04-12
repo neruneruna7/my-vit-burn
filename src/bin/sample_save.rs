@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use burn::{
-    backend::{Autodiff, Wgpu, wgpu::WgpuDevice},
+    backend::Wgpu,
     data::dataset::{
         Dataset as _, HuggingfaceDatasetLoader, SqliteDataset, transform::MapperDataset,
     },
@@ -12,7 +12,6 @@ use my_vit_burn::cifar10_item::{Cifar10Item, Cifar10ItemRaw, Cifar10Mapper};
 use serde_json::Value;
 
 type MyBackend = Wgpu;
-type MyAutodiffBackend = Autodiff<MyBackend>;
 
 fn save_sample_image<B: Backend>(item: &Cifar10Item<B>, file_path: &str) {
     // 1. Tensorの形状を [C, H, W] から [H, W, C] に変更
@@ -21,15 +20,14 @@ fn save_sample_image<B: Backend>(item: &Cifar10Item<B>, file_path: &str) {
     let image_tensor = item.image.clone().permute([1, 2, 0]);
 
     // 2. データをCPU上の生データ(f32の配列)として取得
-    // 2. データをCPU上の生データ(f32の配列)として取得
     let data = image_tensor.into_data();
     // iter::<f32>() でイテレータを取得し、Vec<f32> に変換します
     let floats: Vec<f32> = data.iter::<f32>().collect();
 
-    // 3. 0.0-1.0 の f32 を 0-255 の u8 に変換
+    // 3. [-1.0, 1.0] の f32 を 0-255 の u8 に戻す
     let bytes: Vec<u8> = floats
         .iter()
-        .map(|&x| (x * 255.0).clamp(0.0, 255.0) as u8)
+        .map(|&x| (((x + 1.0) * 0.5) * 255.0).clamp(0.0, 255.0) as u8)
         .collect();
 
     // 4. 画像として保存 (CIFAR-10は 32x32)
@@ -39,10 +37,6 @@ fn save_sample_image<B: Backend>(item: &Cifar10Item<B>, file_path: &str) {
     println!("Label: {}", item.label);
 }
 fn main() {
-    // バックエンドの指定 (ここではCPUバックエンドのNdArrayを使用する例)
-    // ※ Cargo.toml に burn = { features = ["ndarray"] } が必要
-    // Wgpuバックエンドでも同様に動作します
-    let device = WgpuDevice::default();
     let dataset_debug: SqliteDataset<HashMap<String, Value>> =
         HuggingfaceDatasetLoader::new("cifar10")
             .dataset("train")

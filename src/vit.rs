@@ -29,7 +29,7 @@ impl VitConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> Vit<B> {
         // パッチをトークン（固定長のベクトルに変換）するための線形層
         let patch_embedding = LinearConfig::new(PATCH_VECTOR_LEN, EMBED_VECTOR_LEN);
-        // Pram from_tensor ではなく， uninitializedを使えとの警告あり
+        // Param from_tensor ではなく， uninitializedを使えとの警告あり
         // paramIdがなにかわかってないので，ひとまずはこれで
         let cls: Param<Tensor<B, 3>> =
             Param::from_tensor(Tensor::zeros(Shape::new([1, 1, EMBED_VECTOR_LEN]), device));
@@ -71,7 +71,7 @@ impl<B: Backend> Vit<B> {
     /// 入力: [Batch, Channel, Height, Width] = [B, 3, 32, 32]
     /// 分割されて，[Batch, Num_Patches, Channels, Patch_H, Patch_W] = [B, 16, 3, 8, 8]
     /// 出力: [Batch, Num_Patches, Patch_Vector_Len] = [B, 16, 3*8*8=192]
-    fn patchfy(&self, tensor: Tensor<B, 4>, split_rows: usize, split_cols: usize) -> Tensor<B, 3> {
+    fn patchify(&self, tensor: Tensor<B, 4>, split_rows: usize, split_cols: usize) -> Tensor<B, 3> {
         let rows_chunked = tensor.chunk(split_rows, 2);
         let rows: Tensor<B, 5> = Tensor::stack(rows_chunked, 1);
         let cols_chunked = rows.chunk(split_cols, 4);
@@ -87,8 +87,8 @@ impl<B: Backend> Vit<B> {
 
     pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 2> {
         debug!("Input shape: {:?}", input.dims());
-        let x = self.patchfy(input, SPLIT_ROWS, SPLIT_COLS);
-        debug!("After patchfy shape: {:?}", x.dims());
+        let x = self.patchify(input, SPLIT_ROWS, SPLIT_COLS);
+        debug!("After patchify shape: {:?}", x.dims());
         // 次元のインデックスは0スタート．2から4次元までを平坦化
         // 2つ次元が減るので，5から3次元になる
         let x = self.patch_embedding.forward(x);
